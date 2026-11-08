@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// CABLE FAMILY  (دسته اصلی)
+// ─────────────────────────────────────────────
+model CableFamily {
+  id           Int                      @id @default(autoincrement())
+  type         CableFamilyType          @unique
+  products     CableProduct[]
+  translations CableFamilyTranslation[]
+}
+
+model CableFamilyTranslation {
+  id       Int             @id @default(autoincrement())
+  familyId Int
+  family   CableFamily     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  language Language
+  name     String          // "کابل قدرت فشار ضعیف" / "Low Voltage Power Cable"
+
+  @@unique([familyId, language])
+}
+
+enum CableFamilyType {
+  LOW_VOLTAGE_POWER
+  AERIAL
+  FLEXIBLE
+}
+
+// ─────────────────────────────────────────────
+// CABLE PRODUCT  (زیردسته: NYY, NAYY, ...)
+// ─────────────────────────────────────────────
+model CableProduct {
+  id       Int         @id @default(autoincrement())
+  familyId Int
+  family   CableFamily @relation(fields: [familyId], references: [id])
+
+  // ── مشخصات فنی ثابت (بدون ترجمه) ──────────
+  abbreviation      String   @unique    // "NYY"
+  standard          String              // "INSO 3569-1, IEC 60502-1"
+  ratedVoltage      String              // "0.6/1 kV"
+  maxOperatingTemp  String              // "70°C"
+
+  // هادی
+  conductorMaterial ConductorMaterial   // COPPER | ALUMINUM | COPPER_OR_ALUMINUM
+  conductorClasses  String[]            // ["1","2"] یا ["5"]
+
+  // رنج سایز
+  minSection        Float               // 0.5  (mm²)
+  maxSection        Float               // 500  (mm²)
+
+  // شکل‌های قابل تولید
+  configurations    CableConfig[]       // [SINGLE_CORE, MULTI_CORE_ROUND, ...]
+
+  // لایه‌های ساختاری
+  singleCoreLayers      String?         // "CU/PVC.A/PVC.ST1"
+  multiCoreRoundLayers  String?         // "CU/PVC.A/FILLER/PVC.ST1"
+  multiCoreSectorLayers String?         // "CU/PVC.A/PP/PVC.ST1"
+
+  // ── محتوای چندزبانه ─────────────────────────
+  translations      CableProductTranslation[]
+  datasheetRequests DatasheetRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId])
+}
+
+enum ConductorMaterial {
+  COPPER
+  ALUMINUM
+  COPPER_OR_ALUMINUM
+}
+
+enum CableConfig {
+  SINGLE_CORE
+  MULTI_CORE_ROUND
+  MULTI_CORE_SECTOR
+}
+
+model CableProductTranslation {
+  id        Int          @id @default(autoincrement())
+  productId Int
+  product   CableProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  language  Language
+
+  name        String      // نام کامل: "NYY – کابل قدرت فشار ضعیف"
+  features    String      // ویژگی‌ها: "مقاوم در برابر آب و هوا، ..."
+  usage       String      // کاربرد: "توزیع برق در فضای باز، زیر زمین، ..."
+  description String?     // توضیحات تکمیلی
+
+  @@unique([productId, language])
+}
+
+// ─────────────────────────────────────────────
+// DATASHEET REQUEST  (درخواست دیتاشیت)
+// ─────────────────────────────────────────────
+model DatasheetRequest {
+  id        Int          @id @default(autoincrement())
+  productId Int
+  product   CableProduct @relation(fields: [productId], references: [id])
+
+  requestedSpec String    // سایز / مشخصات انتخابی: "3×25+16 mm²"
+
+  name    String
+  company String?
+  email   String
+  phone   String?
+  message String?
+  lang    String          // زبان فرم هنگام ارسال
+
+  status    RequestStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+
+  @@index([productId])
+  @@index([status])
+}
+
+enum RequestStatus {
+  PENDING
+  SENT
+  REJECTED
+}
+
+// ─────────────────────────────────────────────
+// SHARED ENUMS & OTHER MODELS
+// ─────────────────────────────────────────────
+enum Language {
+  FA
+  EN
+  AR
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  phone     String?
+  message   String
+  lang      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+  password  String
+  createdAt DateTime @default(now())
+}

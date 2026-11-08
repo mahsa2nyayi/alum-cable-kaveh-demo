@@ -1,0 +1,81 @@
+# Production-style stack: PostgreSQL + the web app.
+#
+#   cp .env.example .env            # then fill in the values
+#   docker compose up -d --build
+#   docker compose --profile tools run --rm migrate      # create tables + seed
+#   docker compose --profile tools run --rm admin        # create the admin user
+#
+# The app listens on 127.0.0.1:3000 only; put a reverse proxy (Caddy / nginx)
+# with HTTPS in front of it - see docs/DEPLOYMENT.fa.md.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: alum
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: alum_cable
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alum -d alum_cable"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # no "ports": the database is reachable only from the compose network
+
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://alum:${POSTGRES_PASSWORD}@db:5432/alum_cable?schema=public
+    ports:
+      - "127.0.0.1:3000:3000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # One-off jobs (profile "tools" => not started by `up`)
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: builder
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://alum:${POSTGRES_PASSWORD}@db:5432/alum_cable?schema=public
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+
+  admin:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: builder
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://alum:${POSTGRES_PASSWORD}@db:5432/alum_cable?schema=public
+    stdin_open: true
+    tty: true
+    command: node scripts/create-admin.mjs
+
+volumes:
+  dbdata:
