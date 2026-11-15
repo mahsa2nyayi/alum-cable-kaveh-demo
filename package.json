@@ -27,7 +27,7 @@
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "bcrypt": "^6.0.0",
-    "framer-motion": "^12.23.24",
+    "framer-motion": "^14.13.0",
     "jose": "^6.1.0",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.553.0",
